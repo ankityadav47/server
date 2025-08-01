@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "name": "smtp-cascade-imap-server",
   "builds": [
     {
       "src": "server.js",
@@ -9,7 +10,12 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "server.js"
+      "dest": "server.js",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey, Content-Range, Range"
+      }
     }
   ],
   "env": {

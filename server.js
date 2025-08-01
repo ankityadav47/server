@@ -12,9 +12,45 @@ app.get('/', async (req, res) => {
   res.status(200).json({ message: 'GET method reached successfully' });
 });
 
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'http://localhost:8080',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://smtp-cascade-19.vercel.app',
+    'https://eimqwhzgkfgggquixcgl.supabase.co',
+    'https://eimqwhzgkfgggquixcgl.functions.supabase.co'
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-client-info', 'apikey', 'Content-Range', 'Range'],
+  exposedHeaders: ['Content-Range', 'Range'],
+  credentials: true,
+  optionsSuccessStatus: 200,
+  maxAge: 86400 // 24 hours
+};
+
+// Request logging middleware
+const requestLogger = (req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
+  });
+  next();
+};
+
 // Middleware
-app.use(cors());
+app.use(requestLogger);
+app.use(cors(corsOptions));
 app.use(express.json());
+
+// Log all incoming requests
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
 
 // Helper function to convert SMTP config to IMAP config
 const getImapConfig = (smtpConfig) => {
@@ -259,10 +295,75 @@ app.post('/api/test-connection', async (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    version: require('./package.json').version,
+    serverInfo: {
+      platform: process.platform,
+      nodeVersion: process.version,
+      uptime: process.uptime()
+    }
+  });
+});
+
+// Root endpoint for basic server info
+app.get('/', (req, res) => {
+  res.status(200).json({
+    service: 'SMTP Cascade IMAP Server',
+    status: 'running',
+    endpoints: [
+      { path: '/api/test-connection', method: 'POST', description: 'Test IMAP connection' },
+      { path: '/api/fetch-email', method: 'POST', description: 'Fetch emails from IMAP server' },
+      { path: '/health', method: 'GET', description: 'Server health check' }
+    ]
+  });
+});
+
+// Add a catch-all route to handle 404 errors
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Route not found',
+    details: `The requested route ${req.originalUrl} does not exist on this server`
+  });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error',
+    details: err.message
+  });
+});
+
+// Catch-all route for 404 errors
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `The requested endpoint ${req.method} ${req.path} does not exist`
+  });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal Server Error',
+    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
 });
 
 // Start the server
-app.listen(port, () => {
-  console.log(`IMAP Server running on port ${port}`);
+const PORT = process.env.PORT || 3001;
+const server = app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
+
+// For Vercel deployment
+module.exports = app;

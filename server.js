@@ -3,8 +3,26 @@ const cors = require('cors');
 const { ImapFlow } = require('imapflow');
 const simpleParser = require('mailparser').simpleParser;
 
+// Load environment variables from .env file if present
+try {
+  require('dotenv').config();
+} catch (e) {
+  console.log('No .env file found or dotenv not installed, using default environment variables');
+}
+
 const app = express();
 const port = process.env.PORT || 3001;
+
+// Server information
+const SERVER_INFO = {
+  name: 'SMTP Cascade IMAP Server',
+  version: require('./package.json').version || '1.0.0',
+  environment: process.env.NODE_ENV || 'development',
+  startTime: new Date().toISOString()
+};
+
+console.log(`Starting ${SERVER_INFO.name} v${SERVER_INFO.version} in ${SERVER_INFO.environment} mode`);
+
 app.get('/api/test-connection', async (req, res) => {
   res.status(200).json({ message: 'GET method reached successfully' });
 });
@@ -14,15 +32,45 @@ app.get('/', async (req, res) => {
 
 // CORS configuration
 const corsOptions = {
-  origin: [
-    'http://localhost:8080',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'https://smtp-cascade-19.vercel.app',
-    'https://eimqwhzgkfgggquixcgl.supabase.co',
-    'https://eimqwhzgkfgggquixcgl.functions.supabase.co'
-  ],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
+    
+    // List of allowed origins
+    const allowedOrigins = [
+      // Local development
+      'http://localhost:8080',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      // Frontend deployments
+      'https://smtp-cascade-19.vercel.app',
+      'https://smtp-cascade.vercel.app',
+      // Supabase domains
+      'https://eimqwhzgkfgggquixcgl.supabase.co',
+      'https://eimqwhzgkfgggquixcgl.functions.supabase.co',
+      '.supabase.co',
+      '.supabase.in',
+      '.functions.supabase.co',
+      '.functions.supabase.in'
+    ];
+    
+    // Check if the origin is allowed
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      // Check for exact match
+      if (allowedOrigin === origin) return true;
+      // Check for wildcard domains (starting with .)
+      if (allowedOrigin.startsWith('.') && origin.endsWith(allowedOrigin)) return true;
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log(`CORS blocked request from origin: ${origin}`);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-client-info', 'apikey', 'Content-Range', 'Range'],
   exposedHeaders: ['Content-Range', 'Range'],
